@@ -5,7 +5,7 @@ on:
    pull_request:
    push:
      branches:
-       - echo ${{ env.BRANCH_NAME }}
+       - ${{ env.BRANCH_NAME }}
 jobs:
   build:
     runs-on: ubuntu-latest
