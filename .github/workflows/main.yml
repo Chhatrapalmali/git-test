@@ -1,13 +1,42 @@
-name: CI
-on: push
+name: Update .env file
+
+on:
+  push:
+    
+
 jobs:
-  build:
+  update_env:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Git checkout
-        uses: actions/checkout@v1
-      - name: Branch name
-        run: echo running on branch ${GITHUB_REF##*/}
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Update .env file
+        run: |
+          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> .env
+          cat .env
+          
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add .env
+          git commit -m "Update .env file with branch name [skip ci]"
+          git push
+
+
+
+#name: CI
+#on: push
+#jobs:
+#  build:
+#    runs-on: ubuntu-latest
+#    steps:
+ #     - name: Git checkout
+  #      uses: actions/checkout@v1
+  #    - name: Branch name
+  #      run: echo running on branch ${GITHUB_REF##*/}
         
         
       
