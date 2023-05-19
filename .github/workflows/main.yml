@@ -1,5 +1,9 @@
-name: CI
-on: push
+name: Deployment
+on:   
+   pull_request:
+   push:
+     branches:
+       - ${GITHUB_REF##*/}
 jobs:
   build:
     runs-on: ubuntu-latest
