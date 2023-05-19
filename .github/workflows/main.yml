@@ -1,6 +1,6 @@
 name: Deployment
 env:
- BRANCH_NAME: ${{ github.ref_name }}
+ BRANCH_NAME: ${GITHUB_REF##*/}
 on:   
    pull_request:
    push:
