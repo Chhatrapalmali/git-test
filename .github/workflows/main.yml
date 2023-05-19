@@ -5,7 +5,8 @@ on:
    pull_request:
    push:
      branches:
-       - ${{ env.BRANCH_NAME }}
+       - echo ${GITHUB_REF##*/}
+       
 jobs:
   build:
     runs-on: ubuntu-latest
