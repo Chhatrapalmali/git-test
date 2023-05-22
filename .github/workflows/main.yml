@@ -3,12 +3,11 @@ on:
   push:
  
 jobs:
-  triage:
-    runs-on: ubuntu-latest
-    permissions:
+     runs-on: ubuntu-latest
+     permissions:
       contents: write
       pull-requests: write
-    steps:
+     steps:
       - uses: actions/labeler@v4
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}  
@@ -38,8 +37,11 @@ jobs:
 #on: push
 #jobs:
 #  build:
-#    runs-on: ubuntu-latest
-#    steps:
+     runs-on: ubuntu-latest
+     permissions:
+      contents: write
+      pull-requests: write
+     steps:
  #     - name: Git checkout
   #      uses: actions/checkout@v1
   #    - name: Branch name
