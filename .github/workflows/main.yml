@@ -11,8 +11,7 @@ jobs:
     steps:
       - uses: actions/labeler@v4
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-  
+          repo-token: ${{ secrets.GITHUB_TOKEN }}  
       - name: Checkout code
         uses: actions/checkout@v2
 
