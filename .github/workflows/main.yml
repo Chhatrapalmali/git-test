@@ -1,18 +1,14 @@
-name: Deployment
-#env:
-# BRANCH_NAME: ${GITHUB_REF##*/}
-on:   
-  # pull_request:
-   push:
-    # branches:
-      # - echo ${GITHUB_REF##*/}
-       
+name: Pull request labeler
+on: 
+  push:
+ 
 jobs:
-  build:
+  triage:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - name: Git checkout
-        uses: actions/checkout@v1
-      - name: Branch name
-        run: echo running on branch ${GITHUB_REF##*/}
-      
+      - uses: actions/labeler@v4
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
