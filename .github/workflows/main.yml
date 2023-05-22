@@ -3,6 +3,7 @@ on:
   push:
  
 jobs:
+  build:
      runs-on: ubuntu-latest
      permissions:
       contents: write
@@ -37,11 +38,11 @@ jobs:
 #on: push
 #jobs:
 #  build:
-     runs-on: ubuntu-latest
-     permissions:
-      contents: write
-      pull-requests: write
-     steps:
+ #    runs-on: ubuntu-latest
+  #   permissions:
+   #   contents: write
+    #  pull-requests: write
+     #steps:
  #     - name: Git checkout
   #      uses: actions/checkout@v1
   #    - name: Branch name
