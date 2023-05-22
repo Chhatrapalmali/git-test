@@ -24,6 +24,7 @@ jobs:
           git add .env
           git commit -m "Update .env file with branch name [skip ci]"
           git push
+          git push https://${HUB_TOKEN}@github.com/${{ github.repository }}
    #   - name: Push changes
    #     uses: ad-m/github-push-action@master
   #      with:
