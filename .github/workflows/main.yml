@@ -12,7 +12,7 @@ jobs:
          echo "BRANCH_NAME=$(echo ${GITHUB_REF##*/} | tr / -)" >> $GITHUB_ENV
       - name: Change something
         run: |   
-         sed -i '/BRANCH**/d' .env
+         sed -i '/BRANCH/d' .env
          #sed -i "s/BRANCH_NAME/X=${{ steps.branch.outputs.BRANCH_NAME }}/g" .env
 
          #sed -i 's/BRANCH**/"{{ env.BRANCH_NAME }}"/g' .env
