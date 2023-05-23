@@ -1,35 +1,38 @@
-name: Pull request labeler
-on: 
-  push: 
+name: deployment
+on:   
+   pull_request:
+   push:
+    
 jobs:
-  build:
+    build:
+     name: Build Web
+     env:
+    #  FLUTTER_VERSION: 2.5.3
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  
      runs-on: ubuntu-latest
-     permissions:
-      contents: write
-      pull-requests: write
      steps:
-      - uses: actions/labeler@v4
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}  
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Update .env file
-        run: |
-          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> .env
-          cat .env
-          
-      - name: Commit and push changes
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add .env
-          git commit -m "Update .env file with branch name [skip ci]"      
-       #   git push https://${HUB_TOKEN}@github.com/${{ github.repository }}
-      - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.ref }} 
-
+       - uses: actions/checkout@v1   
+       
+       - name: Set up Docker Buildx
+         uses: docker/setup-buildx-action@v1
+         
+       - name: Get branch name (pull request)        
+         shell: bash
+         run: echo "BRANCH_NAME=$(echo ${GITHUB_REF##*/} | tr / -)" >> $GITHUB_ENV
+  
+       - name: Login to Docker Hub
+         uses: docker/login-action@v1
+         with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ env.DOCKER_PASSWORD }}
       
+       - name: Build and Push Docker image        
+         uses: docker/build-push-action@v2
+         with:
+ 
+          context: .  
+          dockerfile: Dockerfile
+          push: true
+          tags: ${{ env.DOCKER_USERNAME }}/${{ env.BRANCH_NAME }}:images
