@@ -1,25 +1,35 @@
-name: Push changes
-on:
-  push
+name: Pull request labeler
+on: 
+  push: 
 jobs:
-  change-and-push:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
+  build:
+     runs-on: ubuntu-latest
+     permissions:
+      contents: write
+      pull-requests: write
+     steps:
+      - uses: actions/labeler@v4
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}  
+      - name: Checkout code
         uses: actions/checkout@v2
       - name: Change something
-        run: |         
-         echo "BRANCH_NAME=$(echo ${GITHUB_REF##*/} | tr / -)" >> $GITHUB_ENV
-      - name: Change something
         run: |   
-         sed -i '/BRANCH/d' .env
-         #sed -i "s/BRANCH_NAME/X=${{ steps.branch.outputs.BRANCH_NAME }}/g" .env
-
-         #sed -i 's/BRANCH**/"{{ env.BRANCH_NAME }}"/g' .env
-         
-         # find . -type f -name "*.env" -print0 | xargs -0 sed -i "s/foo/bar/g"         
+         sed -i '/BRANCH/d' .env   
+      - name: Update .env file
+        run: |
+          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> .env
+          cat .env          
       - name: Commit and push changes
-        uses: devops-infra/action-commit-push@master
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add .env
+          git commit -m "Update .env file with branch name [skip ci]"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          commit_message: Replaced foo with bar
+          branch: ${{ github.ref }} 
+
+      
