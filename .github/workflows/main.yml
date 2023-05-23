@@ -1,14 +1,34 @@
 name: Pull request labeler
 on: 
-  push:
- 
+
+  push: 
 jobs:
-  triage:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
+  build:
+     runs-on: ubuntu-latest
+     permissions:
+      contents: write
       pull-requests: write
-    steps:
+     steps:
       - uses: actions/labeler@v4
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}  
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Change something
+        run: |   
+         sed -i '/BRANCH/d' .env   
+      - name: Update .env file
+        run: |
+          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> .env
+          cat .env          
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add .env
+          git commit -m "Update .env file with branch name [skip ci]"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }} 
