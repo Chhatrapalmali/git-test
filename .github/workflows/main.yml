@@ -16,11 +16,18 @@ jobs:
         uses: actions/checkout@v2
       - name: Change something
         run: |   
-         sed -i '/BRANCH/d' .env   
+         sed -i '/URL/d' .env   
       - name: Update .env file
         run: |
           echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> .env
-          cat .env          
+          cat .env   
+      - name: Update .env file
+        run: |
+          if [[ ${{ BRANCH_NAME }} == "supportserver" ]]; then
+           echo "URL=https://mongodb" >> .env         
+          else
+            echo "URL=https://mongodb2"
+          fi
       - name: Commit and push changes
         run: |
           git config --global user.name "GitHub Actions"
