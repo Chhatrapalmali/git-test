@@ -28,7 +28,7 @@ jobs:
           if [[ ${GITHUB_REF#refs/heads/} == "supportserver" ]]; then
            echo "URL=https://mongodb" >> .env         
           else
-            echo "URL=https://mongodb2"
+            echo "URL=https://mongodb2" >> .env    
           fi
       - name: Commit and push changes
         run: |
