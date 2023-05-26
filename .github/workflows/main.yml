@@ -24,7 +24,7 @@ jobs:
           cat .env   
       - name: Update .env file
         run: |
-          ls
+          
           if [[ ${GITHUB_REF#refs/heads/} == "supportserver" ]]; then
            echo "URL=https://mongodb" >> .env         
           else
