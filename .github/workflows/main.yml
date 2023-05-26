@@ -16,7 +16,8 @@ jobs:
         uses: actions/checkout@v2
       - name: Change something
         run: |   
-         sed -i '/URL/d' .env   
+         sed -i '/URL/d' .env 
+         sed -i '/BRANCH/d' .env 
       - name: Update .env file
         run: |
           echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> .env
