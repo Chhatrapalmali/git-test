@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Change something
         run: |   
-         sed -i '/String baseUrl/d' ./smart_node/lib/helper/constants.dart
+         sed -i '/ String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/${apiVersion[0]}'  : 'https://dev.smartnode.in/api/${apiVersion[0]}';/d' ./smart_node/lib/helper/constants.dart
          
     #  - name: Update .env file
      #   run: |
