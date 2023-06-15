@@ -1,6 +1,8 @@
 name: Pull request labeler
 on: 
   push: 
+  pull_request:
+  
 jobs:
   build:
      runs-on: ubuntu-latest
@@ -15,25 +17,25 @@ jobs:
         uses: actions/checkout@v2
       - name: Change something
         run: |   
-         sed -i '/URL/d' .env 
-         sed -i '/BRANCH/d' .env 
+         sed -i '/smartnode.in/api/${apiVersion[0]/d' smart_node/lib/helper/constants.dart
+         
     #  - name: Update .env file
      #   run: |
-     #     echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> .env
+     #     echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> smart_node/lib/helper/constants.dart
       #    cat .env   
       - name: Update .env file
         run: |          
           if [[ ${GITHUB_REF#refs/heads/} == "appurlselector" ]]; then
-           echo "URL=https://mongodbsupportservertest" >> .env         
+           echo "String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/${apiVersion[0]}': 'https://api.smartnode.in/api/${apiVersion[0]}';" >> smart_node/lib/helper/constants.dart       
           else
-            echo "URL=mongodbsupportserverrelease" >> .env    
+            echo "URL=mongodbsupportserverrelease" >> smart_node/lib/helper/constants.dart 
           fi
       - name: Commit and push changes
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add .env
-          git commit -m "Update .env file with branch name [skip ci]"
+          git add smart_node/lib/helper/constants.dart
+          git commit -m "Update smart_node/lib/helper/constants.dart file with branch name [skip ci]"
       - name: Push changes
         uses: ad-m/github-push-action@master
         with:
