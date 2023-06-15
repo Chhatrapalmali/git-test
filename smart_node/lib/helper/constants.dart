@@ -322,7 +322,6 @@ class Constants {
   String privacyPolicyUrl() => 'https://smartnode.in/privacy-policy/';
 pi/${apiVersion[0]/d
 
-  String baseUrl() => SharedPreferenceManager.isLocalUrl()
       ? 'http://10.10.10.102:5000/api/${apiVersion[0]}'
       : 'https://dev.smartnode.in/api/${apiVersion[0]}';
 pi/${apiVersion[0]/d
