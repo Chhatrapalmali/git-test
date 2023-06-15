@@ -13,23 +13,29 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}  
       - name: Checkout code
         uses: actions/checkout@v2
-
+      - name: Change something
+        run: |   
+         sed -i '/URL/d' .env 
+         sed -i '/BRANCH/d' .env 
+    #  - name: Update .env file
+     #   run: |
+     #     echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> .env
+      #    cat .env   
       - name: Update .env file
-        run: |
-          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> .env
-          cat .env
-          
+        run: |          
+          if [[ ${GITHUB_REF#refs/heads/} == "appurlselector" ]]; then
+           echo "URL=https://mongodbsupportservertest" >> .env         
+          else
+            echo "URL=mongodbsupportserverrelease" >> .env    
+          fi
       - name: Commit and push changes
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add .env
-          git commit -m "Update .env file with branch name [skip ci]"      
-       #   git push https://${HUB_TOKEN}@github.com/${{ github.repository }}
+          git commit -m "Update .env file with branch name [skip ci]"
       - name: Push changes
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.ref }} 
-
-      
