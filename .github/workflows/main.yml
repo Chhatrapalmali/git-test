@@ -18,12 +18,12 @@ jobs:
       - name: Change something
         run: |   
          sed -i '/String baseUrl()/d' ./smart_node/lib/helper/constants.dart
-         sed -i '/apiVersion/d' ./smart_node/lib/helper/constants.dart
+         sed -i '/*apiVersion*/d' ./smart_node/lib/helper/constants.dart
          
       - name: Update .env file
         run: |          
           if [[ ${GITHUB_REF#refs/heads/} == "app-release" ]]; then
-           echo "String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/${apiVersion[0]}': 'https://api.smartnode.in/api/${apiVersion[0]}';" >> smart_node/lib/helper/constants.dart       
+           echo " String baseUrl() => SharedPreferenceManager.isLocalUrl()      ? 'http://10.10.10.102:5000/api/${apiVersion[0]}'      : 'https://dev.smartnode.in/api/${apiVersion[0]}'; >> smart_node/lib/helper/constants.dart       
           else
             echo "String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/${apiVersion[0]}': 'https://test.api.smartnode.in/api/${apiVersion[0]}';" >> smart_node/lib/helper/constants.dart
           fi
