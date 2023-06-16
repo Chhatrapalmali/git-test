@@ -19,6 +19,7 @@ jobs:
         run: |   
          sed -i '/String baseUrl()/d' ./smart_node/lib/helper/constants.dart
          sed -i '/apiVersion/d' ./smart_node/lib/helper/constants.dart
+          sed -i '///build_run_number/d' ./smart_node/lib/helper/constants.dart
          
       - name: Update .env file
         run: |          
