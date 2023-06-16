@@ -27,6 +27,8 @@ jobs:
           else
             echo "String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/\${apiVersion[0]}': 'https://test.api.smartnode.in/api/\${apiVersion[0]}';" >> smart_node/lib/helper/constants.dart
           fi
+      - name: Output Run Number
+        run: echo #${{ github.run_number }} >> smart_node/lib/helper/constants.dart
       - name: Commit and push changes
         run: |
           git config --global user.name "GitHub Actions"
