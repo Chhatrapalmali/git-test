@@ -20,10 +20,6 @@ jobs:
          sed -i '/String baseUrl()/d' ./smart_node/lib/helper/constants.dart
          sed -i '/apiVersion/d' ./smart_node/lib/helper/constants.dart
          
-    #  - name: Update .env file
-     #   run: |
-     #     echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> smart_node/lib/helper/constants.dart
-      #    cat .env   
       - name: Update .env file
         run: |          
           if [[ ${GITHUB_REF#refs/heads/} == "app-release" ]]; then
