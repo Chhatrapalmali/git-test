@@ -321,6 +321,9 @@ class Constants {
 
   String privacyPolicyUrl() => 'https://smartnode.in/privacy-policy/';
 
+  String baseUrl() => SharedPreferenceManager.isLocalUrl()
+      ? 'http://10.10.10.102:5000/api/${apiVersion[0]}'
+      : 'https://dev.smartnode.in/api/${apiVersion[0]}';
   // : 'http://devsmartnodeLoadBalancer-1664971255.ap-south-1.elb.amazonaws.com:5000/api/v1';
 
   Future<bool> checkTutorialStatus({required String checkString}) async {
@@ -2312,4 +2315,3 @@ class Constants {
     // });
   }
 }
-String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/': 'https://test.api.smartnode.in/api/';
