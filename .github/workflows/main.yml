@@ -1,11 +1,15 @@
-name: Pull request labeler
+name: file update constant.dart
 on: 
-  push: 
-  pull_request:
+  push:
   
+# the build will run on code push in a branch in which this file is present. 
+
 jobs:
   build:
      runs-on: ubuntu-latest
+     
+     # permissions given for code push in repository.
+     
      permissions:
       contents: write
       pull-requests: write
@@ -16,7 +20,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Change something
-        run: |   
+        run: | 
+        
+         # delete the line containing below options.
+         
+         #while first adding this cript make sure constant.dart file contains line with below text otherwise build fails.
+         
          sed -i '/String baseUrl()/d' ./smart_node/lib/helper/constants.dart
          sed -i '/apiVersion/d' ./smart_node/lib/helper/constants.dart
           sed -i '/build_run_number/d' ./smart_node/lib/helper/constants.dart
@@ -28,8 +37,14 @@ jobs:
           else
             echo "String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/\${apiVersion[0]}': 'https://test.api.smartnode.in/api/\${apiVersion[0]}';" >> smart_node/lib/helper/constants.dart
           fi
+          
+          #add this line in code for selection of correct URL while building according to branch name present.
+          
       - name: Output Run Number
         run: echo "//build_run_number=${{ github.run_number }}" >> smart_node/lib/helper/constants.dart
+        
+        #run number is required otherwise build will fail.
+        
       - name: Commit and push changes
         run: |
           git config --global user.name "GitHub Actions"
