@@ -20,21 +20,21 @@ jobs:
          sed -i '/String baseUrl()/d' ./smart_node/lib/helper/constants.dart
          sed -i '/*apiVersion*/d' ./smart_node/lib/helper/constants.dart
          
-      - name: Update .env file
-        run: |          
-          if [[ ${GITHUB_REF#refs/heads/} == "app-release" ]]; then
-           echo "String baseUrl() => SharedPreferenceManager.isLocalUrl()  ? 'http://10.10.10.102:5000/api/${apiVersion[0]}': 'https://api.smartnode.in/api/${apiVersion[0]}';" >> smart_node/lib/helper/constants.dart       
-          else
-            echo "String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/${apiVersion[0]}': 'https://test.api.smartnode.in/api/${apiVersion[0]}';" >> smart_node/lib/helper/constants.dart
-          fi
-      - name: Commit and push changes
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add smart_node/lib/helper/constants.dart
-          git commit -m "Update smart_node/lib/helper/constants.dart file with branch name [skip ci]"
-      - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.ref }} 
+   #   - name: Update .env file
+    #    run: |          
+    #      if [[ ${GITHUB_REF#refs/heads/} == "app-release" ]]; then
+    #       echo "String baseUrl() => SharedPreferenceManager.isLocalUrl()  ? 'http://10.10.10.102:5000/api/${apiVersion[0]}': 'https://api.smartnode.in/api/${apiVersion[0]}';" >> smart_node/lib/helper/constants.dart       
+    #      else
+    #        echo "String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/${apiVersion[0]}': 'https://test.api.smartnode.in/api/${apiVersion[0]}';" >> smart_node/lib/helper/constants.dart
+    #      fi
+    #  - name: Commit and push changes
+    #    run: |
+    #      git config --global user.name "GitHub Actions"
+    #      git config --global user.email "actions@github.com"
+    #      git add smart_node/lib/helper/constants.dart
+    #      git commit -m "Update smart_node/lib/helper/constants.dart file with branch name [skip ci]"
+     # - name: Push changes
+     #   uses: ad-m/github-push-action@master
+     #   with:
+     #     github_token: ${{ secrets.GITHUB_TOKEN }}
+     #     branch: ${{ github.ref }} 
