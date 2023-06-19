@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:aws_common/aws_common.dart';
+import 'package:aws_signature_v4/aws_signature_v4.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -11,18 +13,22 @@ import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:get/get.dart';
 import 'package:hive/hive.dart';
-import 'package:internet_connection_checker/internet_connection_checker.dart';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:smart_node/components/alert_dialog_sheet.dart';
 import 'package:smart_node/configuration/http_config.dart';
 import 'package:smart_node/configuration/http_handler.dart';
 import 'package:smart_node/controllers/auth_controllers/authentication_controller.dart';
 import 'package:smart_node/controllers/auth_controllers/otp_controller.dart';
 import 'package:smart_node/controllers/home_controllers/floor_and_room_controller.dart';
+import 'package:smart_node/controllers/main_navigation_controllers/main_navigation_controller.dart';
 import 'package:smart_node/helper/box_names.dart';
 import 'package:smart_node/helper/image_url.dart';
-import 'package:smart_node/models/model_channels_16/model_channels.dart';
+import 'package:smart_node/models/api_models/force_app_update_model.dart';
+import 'package:smart_node/models/model_channels_16/model_set_top_box_channels.dart';
 import 'package:smart_node/models/model_floor_2/model_floor.dart';
 import 'package:smart_node/models/model_geo_fencing_17/model_geo_fencing.dart';
 import 'package:smart_node/models/model_remotes_8/model_remotes.dart';
@@ -34,14 +40,14 @@ import 'package:smart_node/models/user_model/user_model.dart';
 import 'package:smart_node/screens/authentication_screen/authentication_screen.dart';
 import 'package:smart_node/screens/main_navigation_screen/main_navigation_screen.dart';
 import 'package:smart_node/services/mqtt_service.dart';
+import 'package:store_redirect/store_redirect.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
-import 'package:http/http.dart' as http;
+
+import '../components/app_update_dialog.dart';
 import '../configuration/shared_preference_manager.dart';
 import '../models/model_device_4/model_device.dart';
 import '../services/udp_service.dart';
 import 'functions.dart';
-import 'package:intl/intl.dart';
-
 import 'toast_messages.dart';
 
 enum LastKnownState {
@@ -51,8 +57,8 @@ enum LastKnownState {
 }
 
 enum MessageType {
-  User,
-  Bot,
+  user,
+  bot,
 }
 
 class Constants {
@@ -70,7 +76,7 @@ class Constants {
   // static Map<String, List<String>> newDeviceCommands = new Map();
   static var newCacheMap = <String?, List<dynamic>>{}.obs;
   static var autoOffSwitchMap = <String?, List<int>>{}.obs;
-  static Map<String, Socket> tcpSocketMap = new Map();
+  static Map<String, Socket> tcpSocketMap = {};
 
   // key = remoteId, value = position of state
   // static Map<String, String> acState = new Map();
@@ -123,6 +129,7 @@ class Constants {
   static const IRT = "IRT";
   static const SCA = "SCA";
   static const RGB = "RGB";
+  static const TIM = "TIM";
   static const SRG = "SRG";
   static const AO1 = "AO1";
   static const CNF = "CNF";
@@ -135,6 +142,7 @@ class Constants {
   static const TIME_UDP_NORESPOND_CHECK = 2;
   static const TIME_MQTT_NORESPOND_CHECK = 7;
   static const DELAY_RESEND_CMD = 500;
+
   // static const PORT_TO_SEND_MESSAGE = 13001;
   // static const PORT_TO_RECEIVE_MESSAGE = 13000;
   static late MqttServerClient mqttClient;
@@ -146,6 +154,7 @@ class Constants {
   static String? userId = '';
   static bool isChangePwdCmdSent = false;
   static bool isProfileTimeCmdSent = false;
+
   // static String appVersion = '';
   static String clientId = '';
   static var receivedMessage = ''.obs;
@@ -310,7 +319,7 @@ class Constants {
   static List<String> oldIrVersion = ['I.0.0', 'I.2.0'];
   static String imageToBase64(Uint8List data) => base64Encode(data);
   static Image imageFromBase64(String base) {
-    print('base $base');
+    debugPrint('base $base');
     if (base.length % 4 > 0) {
       base += '=' * (4 - base.length % 4);
     }
@@ -321,7 +330,18 @@ class Constants {
 
   String privacyPolicyUrl() => 'https://smartnode.in/privacy-policy/';
 
-  // : 'http://devsmartnodeLoadBalancer-1664971255.ap-south-1.elb.amazonaws.com:5000/api/v1';
+  String baseUrl() => SharedPreferenceManager.isLocalUrl()
+      ? 'http://10.10.10.102:5000/api/${apiVersion[0]}'
+      : 'https://test.api.smartnode.in/api/${apiVersion[0]}';
+
+  // : 'https://dev.smartnode.in/api/${apiVersion[0]}';
+  // : 'https://api.smartnode.in/api/${apiVersion[0]}';
+
+  String v2BaseUrl() => SharedPreferenceManager.isLocalUrl()
+      ? 'http://10.10.10.102:5000/api/${apiVersion[1]}'
+      : 'https://test.api.smartnode.in/api/${apiVersion[1]}';
+
+  // : 'https://api.smartnode.in/api/${apiVersion[0]}';
 
   Future<bool> checkTutorialStatus({required String checkString}) async {
     bool isCompleteTutorial = false;
@@ -349,7 +369,6 @@ class Constants {
       color: Colors.teal,
       enableTargetTab: true,
       enableOverlayTab: dismiss ?? true,
-      transparentTargetTap: true,
       shape: shape ?? ShapeLightFocus.Circle,
       radius: 60,
       contents: [
@@ -362,7 +381,7 @@ class Constants {
               title != null
                   ? Text(
                       title,
-                      style: TextStyle(
+                      style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                           fontSize: 20.0),
@@ -373,7 +392,7 @@ class Constants {
                 child: description != null
                     ? Text(
                         description,
-                        style: TextStyle(color: Colors.white),
+                        style: const TextStyle(color: Colors.white),
                       )
                     : Container(),
               )
@@ -407,8 +426,9 @@ class Constants {
 
   static sendSTSAndRgbCommandToAllDevice() async {
     var deviceBox = Hive.box<ModelDevice>(devices);
+    Box<UserModel> userBox = Hive.box(userTable);
     for (int i = 0; i < deviceBox.length; i++) {
-      Map<String, dynamic> cmdToSend = new Map();
+      Map<String, dynamic> cmdToSend = {};
       if (deviceBox.getAt(i)!.hardwareType!.startsWith('rgb')) {
         cmdToSend['cmd'] = Constants.RGB;
       } else {
@@ -417,7 +437,7 @@ class Constants {
 
       cmdToSend['slave'] = deviceBox.getAt(i)!.mainId;
       cmdToSend['token'] = deviceBox.getAt(i)!.token;
-      String byUser = 'M${Constants.userId}';
+      String byUser =  'M_${userBox.getAt(0)!.firstName} ${userBox.getAt(0)!.lastName}';
       cmdToSend['by'] = byUser;
       String cmd = jsonEncode(cmdToSend);
 
@@ -428,25 +448,26 @@ class Constants {
   }
 
   static setAllDeviceOffline() {
-    Constants.devicesInLocal.clear();
-    Constants.devicesWorking.clear();
-    Constants.newCacheMap.clear();
-    Constants.arraySerialCache.clear();
-    Constants.arrayIpCache.clear();
+    devicesInLocal.clear();
+    devicesWorking.clear();
+    newCacheMap.clear();
+    arraySerialCache.clear();
+    arrayIpCache.clear();
+    newCacheMap.refresh();
   }
 
-  static Future<bool> isInternetConnection() async {
-    bool result = await InternetConnectionChecker().hasConnection;
-    print('isWifiHasInternetConnection: $result');
-    return result;
-  }
+  // static Future<bool> isInternetConnection() async {
+  //   bool result = await InternetConnectionChecker().hasConnection;
+  //   debugPrint('isWifiHasInternetConnection: $result');
+  //   return result;
+  // }
 
   static Future<bool> isWifiHasInternet() async {
     bool isConnected = false;
     try {
       final result = await InternetAddress.lookup('google.com');
       if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
-        print('connected: $result');
+        debugPrint('connected: $result');
         isConnected = true;
       }
     } on SocketException catch (_) {
@@ -464,7 +485,7 @@ class Constants {
     String? status = jsonResponse['status'];
 
     if (status == 'success') {
-      print('DM1Response: $jsonResponse');
+      debugPrint('DM1Response: $jsonResponse');
       String? data = jsonResponse['data'];
       List<dynamic>? oneDeviceSwitchData = newCacheMap[deviceMainId];
       if (oneDeviceSwitchData != null && oneDeviceSwitchData.isNotEmpty) {
@@ -560,7 +581,7 @@ class Constants {
               }
             }
             switchesBox.putAt(i, modelSwitches);
-            updateDimmerTypeAPI(modelSwitches);
+            // updateDimmerTypeAPI(modelSwitches);
           }
         }
 
@@ -571,9 +592,9 @@ class Constants {
 
   static schReceived(Map<String, dynamic> jsonResponse) {
     String? deviceMainId = jsonResponse['slave']; // slave = 2018010915202508
-    String schReturnData = jsonResponse['data'];
+    var schReturnData = jsonResponse['data'];
     // data = I-24-18:25-NNNNYNN-N-5-1-02 get this response when we create schedule
-    List<String> schItems = schReturnData.split("-");
+    var schItems;
     //schItems: [I, 24, 18:25, NNNNYNN, N, 5, 1, 02]
 
     Box<ModelDevice> deviceBox = Hive.box(devices);
@@ -582,9 +603,29 @@ class Constants {
             .first
             .hardwareType ??
         '';
-
+    String hardwareVersion = deviceBox.values
+            .where((element) => element.mainId == deviceMainId)
+            .first
+            .hardwareVersion ??
+        '';
     // this cmd is not for ir so not included
-    if ((hardwareType == 'standalone') ||
+    if (!hardwareVersion.startsWith('R.1')) {
+      schItems = schReturnData.split("-");
+    }
+    if (hardwareVersion.startsWith('R.1')) {
+      if (jsonResponse["sub_cmd"] == RGB) {
+        List<dynamic>? oneDeviceSwitchData = newCacheMap[deviceMainId];
+        if (oneDeviceSwitchData != null && oneDeviceSwitchData.isNotEmpty) {
+          var schedules = jsonResponse['schedules'];
+          Map<String, dynamic> rgbMap = oneDeviceSwitchData[0];
+          if (schedules > 0) {
+            rgbMap['schedule'] = 'Y';
+          } else {
+            rgbMap['schedule'] = 'N';
+          }
+        }
+      }
+    } else if ((hardwareType == 'standalone') ||
         (hardwareType == 'curtain') ||
         (hardwareType == 'doorLock')) {
       //noinspection StatementWithEmptyBody
@@ -608,7 +649,7 @@ class Constants {
               targetedSwitchMap['schedule'] = 'N';
               j += 2;
             }
-            print('after_delete_schedule: $targetedSwitchMap');
+            debugPrint('after_delete_schedule: $targetedSwitchMap');
           }
         }
       } else if (schItems[0] == 'I') {
@@ -667,7 +708,7 @@ class Constants {
     if (status == 'success') {
       String? data = jsonResponse['data'];
       List<dynamic>? oneDeviceSwitchData = newCacheMap[deviceMainId];
-      print('TL1_cache_data: $oneDeviceSwitchData');
+      debugPrint('TL1_cache_data: $oneDeviceSwitchData');
 
       if (oneDeviceSwitchData != null && oneDeviceSwitchData.isNotEmpty) {
         String buttonNumber = data!.substring(0, 2);
@@ -684,12 +725,13 @@ class Constants {
 
   static sendSTSCommand(String? deviceMainId) async {
     Box<ModelDevice> deviceBox = Hive.box(devices);
+    Box<UserModel> userBox = Hive.box(userTable);
     if (deviceBox.length != 0) {
       deviceBox.values
           .where((element) => element.mainId == deviceMainId)
           .forEach((element) {
         // var command = element.hardwareType!.startsWith('rgb') ? RGB : STS;
-        String byUser = 'M$userId';
+        String byUser =  'M_${userBox.getAt(0)!.firstName} ${userBox.getAt(0)!.lastName}';
         var cmdToSend = {
           'cmd': STS,
           'slave': element.mainId,
@@ -725,7 +767,7 @@ class Constants {
         int indexOfOperation = int.parse(button!) - 1;
         // Ex. button value from SET = 01, Integer.parseInt(button) = 1, op = 1 - 1 = 0
         //index of operation = 2 - 1 = 1,
-        print('oneDeviceSwitchData: ${oneDeviceSwitchData}');
+        debugPrint('oneDeviceSwitchData: $oneDeviceSwitchData');
         Map<String, dynamic> targetedSwitchMap =
             oneDeviceSwitchData[indexOfOperation];
         bool isDimmerPresent = jsonResponse.containsKey('dimmer');
@@ -802,11 +844,10 @@ class Constants {
   static stsReceived(Map<String, dynamic> jsonResponse) {
     String? deviceMainId = jsonResponse['slave'];
     if (!jsonResponse.containsKey('status')) {
-      print('sca STS_Received: $jsonResponse');
       String hardwareVersion = jsonResponse['hw_ver'];
       checkForDeviceRename(jsonResponse);
 
-      if (hardwareVersion.substring(0, 1) == 'I') {
+      if (hardwareVersion.startsWith('I')) {
         // if IR then add default data in cache
         List<dynamic>? oneDeviceSwitchData = newCacheMap[deviceMainId];
         if (oneDeviceSwitchData == null) {
@@ -873,7 +914,7 @@ class Constants {
           }
         });
 
-        if (hardwareType != 'rgb' && hardwareType != 'rgbww') {
+        if (!hardwareType!.startsWith('rgb')) {
           List<dynamic> oneDeviceSwitchData = [];
           if (newCacheMap.containsKey(deviceMainId)) {
             oneDeviceSwitchData = newCacheMap[deviceMainId]!;
@@ -1014,7 +1055,7 @@ class Constants {
                       switchesBox.putAt(k, switchesBox.getAt(k)!);
 
                       // incomplete task to update dimmer type in server
-                      updateDimmerTypeAPI(switchesBox.getAt(k)!);
+                      // updateDimmerTypeAPI(switchesBox.getAt(k)!);
                     }
                   }
                 }
@@ -1053,7 +1094,7 @@ class Constants {
                       }
                       switchesBox.putAt(k, switchesBox.getAt(k)!);
                       // incomplete task to update dimmer type in server
-                      updateDimmerTypeAPI(switchesBox.getAt(k)!);
+                      // updateDimmerTypeAPI(switchesBox.getAt(k)!);
                     }
                   }
                 }
@@ -1092,7 +1133,7 @@ class Constants {
                         }
                         switchesBox.putAt(k, switchesBox.getAt(k)!);
                         // incomplete task to update dimmer type in server
-                        updateDimmerTypeAPI(switchesBox.getAt(k)!);
+                        // updateDimmerTypeAPI(switchesBox.getAt(k)!);
                       }
                     } else {
                       // if dimmer_type not in json then put default dimmer type to fan dimmer
@@ -1105,7 +1146,7 @@ class Constants {
                         }
                         switchesBox.putAt(k, switchesBox.getAt(k)!);
                         // incomplete task to update dimmer type in server
-                        updateDimmerTypeAPI(switchesBox.getAt(k)!);
+                        // updateDimmerTypeAPI(switchesBox.getAt(k)!);
                       }
                     }
                   }
@@ -1167,7 +1208,7 @@ class Constants {
           headers: defaultHeader(),
           body: body,
         );
-        print('editDeviceResponse: ${response.body}');
+        debugPrint('editDeviceResponse: ${response.body}');
         if (successCodes.contains(response.statusCode)) {
           var object = jsonDecode(response.body);
           var status = object['status'];
@@ -1194,14 +1235,14 @@ class Constants {
   //     "slaveId": deviceMainId,
   //     "name": deviceName,
   //   });
-  //   print('renameDevice_body: $body');
+  //   debugPrint('renameDevice_body: $body');
 
   //   var response = await http.put(
   //     Uri.parse(deviceDetailsUrl),
   //     headers: defaultHeader(),
   //     body: body,
   //   );
-  //   print('renameDeviceRes: ${response.body}');
+  //   debugPrint('renameDeviceRes: ${response.body}');
   //   var object = jsonDecode(response.body);
 
   //   if (successCodes.contains(response.statusCode)) {
@@ -1287,36 +1328,36 @@ class Constants {
     int a = s ~/ 16; // manual
     int b = s % 16; // universal
     String nodeType = '', humanCentric = '';
-    // print("\na: $a, b: $b");
+    // debugPrint("\na: $a, b: $b");
 
     if (p == 1) {
-      // print('\nconfig type is tunable');
-      // print('tunable slot is $x');
+      // debugPrint('\nconfig type is tunable');
+      // debugPrint('tunable slot is $x');
       if (y == 8 || y == 4) {
         if (y == 8) {
-          // print('cool node and HCL is enable');
+          // debugPrint('cool node and HCL is enable');
           humanCentric = 'Y';
         } else if (y == 4) {
-          // print('cool node and HCL is disable');
+          // debugPrint('cool node and HCL is disable');
           humanCentric = 'N';
         }
         nodeType = 'C'; // COOL
-        // print('max cool is $r, min cool is $s');
+        // debugPrint('max cool is $r, min cool is $s');
       }
 
       if (y == 2 || y == 1) {
         if (y == 2) {
           humanCentric = 'Y';
-          // print('warm node and HCL is enable');
+          // debugPrint('warm node and HCL is enable');
         } else if (y == 1) {
           humanCentric = 'N';
-          // print('warm node and HCL is disable');
+          // debugPrint('warm node and HCL is disable');
         }
         nodeType = 'W'; // WARM
-        // print('driver type is $r, universal is $b, manual: $a');
+        // debugPrint('driver type is $r, universal is $b, manual: $a');
       }
     } else {
-      // print('config type unknown');
+      // debugPrint('config type unknown');
     }
     Map<String, dynamic> map = {};
     map['type'] = p.toString();
@@ -1419,7 +1460,7 @@ class Constants {
                 : dimmerArray[coolSwitchDimmer];
           }
 
-          print(
+          debugPrint(
               'coolSwDim: $coolDimValue, warmSwDim: $warmDimValue, driverType: $driverType');
           Map<String, dynamic> coolSwitchMap = oneDeviceSwitchData![coolSwitch];
           coolSwitchMap['switchState'] = onOffValue;
@@ -1441,7 +1482,7 @@ class Constants {
           warmSwitchMap['universal'] = isUniversal;
           warmSwitchMap['manual'] = isManual;
 
-          print('updatedCache: ${newCacheMap[deviceMainId]}');
+          debugPrint('updatedCache: ${newCacheMap[deviceMainId]}');
         }
       } else if (operation == 11) {
         List<dynamic> oneDeviceSwitchData = newCacheMap[deviceMainId] ?? [];
@@ -1489,13 +1530,13 @@ class Constants {
               coolSwitchMap['dimmer'] = coolDimValue;
             }
             coolSwitchMap['manual'] = manualValue;
-            // print('warmMap: ${warmSwitchMap}, coolMap: ${coolSwitchMap},'
+            // debugPrint('warmMap: ${warmSwitchMap}, coolMap: ${coolSwitchMap},'
             //     ' tuning: $tuning, brightness: $brightness}');
           } else if (slotNumber == 1) {
             // 03,04 switches (2,3)
 
             Map<String, dynamic> warmSwitchMap = oneDeviceSwitchData[2];
-            // print('tun1 warm map before $oneDeviceSwitchData');
+            // debugPrint('tun1 warm map before $oneDeviceSwitchData');
             warmSwitchMap['switchState'] = onOffValue;
             if (warmSwitchMap['driverType'] == '0') {
               warmSwitchMap['dimmer'] =
@@ -1505,7 +1546,7 @@ class Constants {
             }
             // warmSwitchMap['dimmer'] = warmDimValue;
             warmSwitchMap['manual'] = manualValue;
-            // print('tun1 warm map $oneDeviceSwitchData');
+            // debugPrint('tun1 warm map $oneDeviceSwitchData');
 
             Map<String, dynamic> coolSwitchMap = oneDeviceSwitchData[3];
             coolSwitchMap['switchState'] = onOffValue;
@@ -1580,9 +1621,9 @@ class Constants {
     String currentTimeZone;
 
     if (hrs > 0) {
-      currentTimeZone = "+" + hrs.toString() + ":" + min.toString();
+      currentTimeZone = "+$hrs:$min";
     } else {
-      currentTimeZone = hrs.toString() + ":" + min.toString();
+      currentTimeZone = "$hrs:$min";
     }
 
     return currentTimeZone;
@@ -1623,7 +1664,7 @@ class Constants {
     Box<ModelDevice> deviceBox = Hive.box(devices);
     Box<ModelSwitches> switchesBox = Hive.box(switches);
     Box<ModelRemotes> remotesBox = Hive.box(remotes);
-    Box<ModelChannels> channelBox = Hive.box(channels);
+    Box<ModelSetTopBoxChannels> channelBox = Hive.box(setTopBoxChannels);
     Box<ModelGeoFencing> geoFencingBox = Hive.box(geoFencing);
 
     //unsubscribe devices
@@ -1647,12 +1688,12 @@ class Constants {
     // clear all variables
     devicesWorking.clear();
     devicesInLocal.clear();
-    deviceMainIdsList.clear();
+    // deviceMainIdsList.clear();
     arrayIpCache.clear();
     receivedIp.clear();
     SharedPreferenceManager.removeValues();
     SharedPreferenceManager.setLoginStatus(false);
-    Get.offAll(() => AuthenticationScreen());
+    Get.offAll(() => const AuthenticationScreen());
   }
 
   static Future<void> checkProfileTime() async {
@@ -1660,14 +1701,14 @@ class Constants {
     // String? updatedTime = userBox.getAt(0)!.profileUpdatedAt;
     String? jwtToken = userBox.getAt(0)!.jwtToken;
 
-    Map<String, dynamic> map = new Map();
+    Map<String, dynamic> map = {};
     map['profileTime'] = '';
     map['function'] = profileTimeFunction;
     map['token'] = jwtToken;
     map['clientId'] = clientId;
     String object = jsonEncode(map);
 
-    print('sendProfileTimeData:-> $object');
+    debugPrint('sendProfileTimeData:-> $object');
     // MQTTService().publishToServer(message: object);
     // isProfileTimeCmdSent = true;
   }
@@ -1676,7 +1717,7 @@ class Constants {
     bool isTunableSupport = false;
     if (armVersion.isNotEmpty) {
       List<String> data = armVersion.split('.');
-      print('armVersion: $data');
+      debugPrint('armVersion: $data');
       if (int.parse(data[3]) >= greaterThanNumber) {
         isTunableSupport = true;
       }
@@ -1704,15 +1745,15 @@ class Constants {
         .forEach((modelScenes) {
       // save lighting, curtain, rgb, doorlock deviceMainIds
       var switchCommand = modelScenes.commandArray ?? [];
-      switchCommand.forEach((element) {
+      for (var element in switchCommand) {
         deviceIdList.add(element['slave']);
-      });
+      }
 
       // save ir devices mainIds
       var irCommand = modelScenes.irCommandArray ?? [];
-      irCommand.forEach((element) {
+      for (var element in irCommand) {
         deviceIdList.add(element['slave']);
-      });
+      }
     });
     return deviceIdList;
   }
@@ -1723,10 +1764,10 @@ class Constants {
     sceneBox.values
         .where((element) => element.id == sceneId)
         .forEach((modelScenes) {
-      modelScenes.commandArray!.forEach((element) {
+      for (var element in modelScenes.commandArray!) {
         var mainId = element['slave'];
         deviceIdList.add(mainId);
-      });
+      }
     });
     return deviceIdList;
   }
@@ -1736,7 +1777,7 @@ class Constants {
     List<String> parsedNewCompanyName = List.filled(2, '');
     //uppercases character after space
     parsedNewCompanyName[0] = companyName.replaceAllMapped(
-        RegExp(r'[ ][a-z]'), (match) => '${match[0]!.toUpperCase()}');
+        RegExp(r'[ ][a-z]'), (match) => match[0]!.toUpperCase());
     //uppercases first character of string
     parsedNewCompanyName[0] =
         '${parsedNewCompanyName[0][0].toUpperCase()}${parsedNewCompanyName[0].substring(1)}';
@@ -1748,6 +1789,7 @@ class Constants {
   }
 
   bool isSpeechIntialized = false;
+
   String transposeString(String text) {
     String validatedString = Constants.defaultString;
     validatedString = text
@@ -1765,7 +1807,7 @@ class Constants {
         return '_';
       });
     } while (iterate == true);
-    print('vc1 changed $validatedString');
+    debugPrint('vc1 changed $validatedString');
     return validatedString;
   }
 
@@ -1776,6 +1818,7 @@ class Constants {
       'manufacturer': build.manufacturer,
       'model': build.model,
       'product': build.product,
+      'id':build.id
     };
   }
 
@@ -1785,12 +1828,13 @@ class Constants {
       'systemName': data.systemName,
       'systemVersion': data.systemVersion,
       'model': data.model,
+      'id':data.identifierForVendor
     };
   }
 
-  String _chars =
+  final String _chars =
       'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890';
-  Random _rnd = Random();
+  final Random _rnd = Random();
   String getRandomString(int length) => String.fromCharCodes(Iterable.generate(
         length,
         (_) => _chars.codeUnitAt(_rnd.nextInt(_chars.length)),
@@ -1801,17 +1845,17 @@ class Constants {
       'switchId': modelSwitches.switchId,
       'dimmerType': modelSwitches.dimmerType
     });
-    print('updateDimmer_body: $body');
+    debugPrint('updateDimmer_body: $body');
     var response = await http.post(
       Uri.parse(switchConfigurationUrl),
       headers: defaultHeader(),
       body: body,
     );
-    print('updateDimmer_res: ${response.statusCode} => ${response.body}');
+    debugPrint('updateDimmer_res: ${response.statusCode} => ${response.body}');
     // if (successCodes.contains(response.statusCode)) {
-    //   print('success: ${response.statusCode} => ${response.body}');
+    //   debugPrint('success: ${response.statusCode} => ${response.body}');
     // } else {
-    //   print('error_response: ${response.body}');
+    //   debugPrint('error_response: ${response.body}');
     // }
   }
 
@@ -1819,7 +1863,7 @@ class Constants {
     var dateTime = DateFormat("HH:mm").parse(istTime, false);
     var dateLocal = dateTime.toUtc();
 
-    var timeFormatter = new DateFormat('HH:mm');
+    var timeFormatter = DateFormat('HH:mm');
     String utcTime = timeFormatter.format(dateLocal);
 
     return utcTime;
@@ -1829,7 +1873,7 @@ class Constants {
     var dateTime = DateFormat("dd-MM-yyyy HH:mm").parse(istDateTime, false);
     // var dateTimeUTC = dateTime.toUtc().toIso8601String();
     var dateTimeUTC = dateTime.toIso8601String();
-    print('dateLocal: $dateTimeUTC');
+    debugPrint('dateLocal: $dateTimeUTC');
     // var dateFormatter = new DateFormat('dd-MM-yyyy');
     // String utcDate = dateFormatter.format(dateLocal);
 
@@ -1840,7 +1884,7 @@ class Constants {
     var dateTime = DateFormat("dd-MM-yyyy HH:mm").parse(utcDate, true);
     var dateLocal = dateTime.toLocal();
 
-    var timeFormatter = new DateFormat('hh:mm a');
+    var timeFormatter = DateFormat('hh:mm a');
     String time = timeFormatter.format(dateLocal);
 
     return time;
@@ -1848,74 +1892,119 @@ class Constants {
 
   Future<void> saveUserLoginHistory() async {
     DeviceInfoPlugin deviceInfoPlugin = DeviceInfoPlugin();
-    Map<String, dynamic> _deviceData = <String, dynamic>{};
+    Map<String, dynamic> deviceData = <String, dynamic>{};
     String? modelName;
     String? deviceName;
+    String? deviceId;
 
     try {
       if (!kIsWeb && Platform.isAndroid) {
-        _deviceData = _readAndroidBuildData(await deviceInfoPlugin.androidInfo);
-        deviceName = _deviceData['device'];
+        deviceData = _readAndroidBuildData(await deviceInfoPlugin.androidInfo);
+        deviceName = deviceData['device'];
+        deviceId = deviceData['id'];
       } else if (!kIsWeb && Platform.isIOS) {
-        _deviceData = _readIosDeviceInfo(await deviceInfoPlugin.iosInfo);
-        deviceName = _deviceData['name'].replaceAll('’', '\'');
+        deviceData = _readIosDeviceInfo(await deviceInfoPlugin.iosInfo);
+        deviceName = deviceData['name'].replaceAll('’', '\'');
+        deviceId = deviceData['id'];
       }
 
-      modelName = _deviceData['model'];
+      modelName = deviceData['model'];
     } on PlatformException {
-      _deviceData = <String, dynamic>{
+      deviceData = <String, dynamic>{
         'Error:': 'Failed to get platform version.'
       };
     }
 
     var jwtToken = 'JWT ${Hive.box<UserModel>(userTable).getAt(0)!.jwtToken}';
     var header = {'Authorization': jwtToken};
-    var body = {"deviceName": deviceName, "modelName": modelName};
-    print('saveLoginHistory_body: $body, $header');
+    var body = {"deviceName": deviceName, "modelName": modelName, "deviceId":deviceId};
+  //   {
+  //     "deviceId":"nokia1",
+  //   "deviceName":"nokia phone",
+  //   "modelName":"nokiaaa"
+  // }
+    debugPrint('saveLoginHistory_body: $body, $header');
     var response = await http.post(
       Uri.parse(saveUserLoginDataUrl),
       headers: header,
       body: body,
     );
-    print('saveLoginHistory_res: ${response.body}');
+    debugPrint('saveLoginHistory_res: ${response.body}');
     if (successCodes.contains(response.statusCode)) {
       debugPrint('saved Login data');
     } else {
       debugPrint('${response.statusCode}, Error while saving login history');
     }
   }
+  Future<void> updateUserLoginData() async {
+    DeviceInfoPlugin deviceInfoPlugin = DeviceInfoPlugin();
+    Map<String, dynamic> deviceData = <String, dynamic>{};
+    String? deviceId;
 
-  Future<bool> checkAdminToken(bool isToastRequired) async {
-    var isValidToken = false;
-    if (Hive.box<UserModel>(userTable).getAt(0)!.adminToken == null ||
-        Hive.box<UserModel>(userTable).getAt(0)!.adminToken == '') {
-      noAdminAccessToast(null);
-      isValidToken = false;
-    } else {
-      print('checkAdminToken_header: ${defaultHeader()}');
-      var response = await http.get(
-        Uri.parse(checkAdminTokenUrl),
-        headers: defaultHeader(),
-      );
-      print('checkAdminToken_response: ${response.body}');
-      if (response.statusCode == 401) {
-        // unauthorized
-        unAuthorizedUser();
-        isValidToken = false;
-      } else if (successCodes.contains(response.statusCode)) {
-        isValidToken = true;
-      } else {
-        var object = jsonDecode(response.body);
-        if (isToastRequired) {
-          noAdminAccessToast(object['toast']);
-        }
-
-        isValidToken = false;
+    try {
+      if (!kIsWeb && Platform.isAndroid) {
+        deviceId = deviceData['id'];
+      } else if (!kIsWeb && Platform.isIOS) {
+        deviceData = _readIosDeviceInfo(await deviceInfoPlugin.iosInfo);
+        deviceId = deviceData['id'];
       }
+
+    } on PlatformException {
+      deviceData = <String, dynamic>{
+        'Error:': 'Failed to get platform version.'
+      };
     }
-    print(isValidToken);
-    return isValidToken;
+
+    var jwtToken = 'JWT ${Hive.box<UserModel>(userTable).getAt(0)!.jwtToken}';
+    var header = {'Authorization': jwtToken};
+    var body = { "deviceId":deviceId};
+  //   {
+  //     "deviceId":"nokia1",
+  //   "deviceName":"nokia phone",
+  //   "modelName":"nokiaaa"
+  // }
+    debugPrint('saveLoginHistory_body: $body, $header');
+    var response = await http.post(
+      Uri.parse(updateUserLoginUrl),
+      headers: header,
+      body: body,
+    );
+    if (successCodes.contains(response.statusCode)) {
+    } else {
+    }
   }
+
+  // Future<bool> checkAdminToken(bool isToastRequired) async {
+  //   var isValidToken = false;
+  //   if (Hive.box<UserModel>(userTable).getAt(0)!.adminToken == null ||
+  //       Hive.box<UserModel>(userTable).getAt(0)!.adminToken == '') {
+  //     noAdminAccessToast(null);
+  //     isValidToken = false;
+  //   } else {
+  //     debugPrint('checkAdminToken_header: ${defaultHeader()}');
+  //     var response = await http.get(
+  //       Uri.parse(checkAdminTokenUrl),
+  //       headers: defaultHeader(),
+  //     );
+  //     debugPrint('checkAdminToken_response: ${response.body}');
+  //     if (response.statusCode == 401) {
+  //       // unauthorized
+  //       unAuthorizedUser();
+  //       isValidToken = false;
+  //     } else if (successCodes.contains(response.statusCode)) {
+  //       isValidToken = true;
+  //     } else {
+  //       var object = jsonDecode(response.body);
+  //       if (isToastRequired) {
+  //         noAdminAccessToast(object['toast']);
+  //       }
+
+  //       isValidToken = false;
+  //     }
+  //   }
+  //   debugPrint(isValidToken.toString());
+  //   return isValidToken;
+  // }
 
   unAuthorizedUser() {
     Get.bottomSheet(
@@ -1933,7 +2022,7 @@ class Constants {
   void userLoggedInProcess(UserModel userDataFromJson) {
     Box<UserModel> userBox = Hive.box(userTable);
     SharedPreferenceManager.setLoginStatus(true);
-    Constants().saveUserLoginHistory();
+    // Constants().saveUserLoginHistory();
     userBox.delete(userBox.keys).then((value) {
       userBox.add(userDataFromJson).then((value) {
         if (Get.isRegistered<OtpController>()) {
@@ -1944,9 +2033,9 @@ class Constants {
         }
 
         fetchAllData();
-        new Timer.periodic(Duration(seconds: 1), (timer) {
+        Timer.periodic(const Duration(seconds: 1), (timer) {
           // navigate to main screen
-          Get.offAll(() => MainNavigationScreen());
+          Get.offAll(() => const MainNavigationScreen());
           timer.cancel();
         });
       });
@@ -1954,7 +2043,7 @@ class Constants {
   }
 
   Future<void> fetchAllData() async {
-    print('fetchAllDataHeader: ${defaultHeader()}');
+    debugPrint('fetchAllDataHeader: ${defaultHeader()}');
     Box<ModelFloor> floorBox = Hive.box(floor);
     Box<ModelRoom> roomBox = Hive.box(room);
     Box<ModelDevice> deviceBox = Hive.box(devices);
@@ -1965,7 +2054,7 @@ class Constants {
 
     var response =
         await http.get(Uri.parse(fetchAllDataUrl), headers: defaultHeader());
-    print('fetchAllDataRes: ${response.body}');
+    debugPrint('fetchAllDataRes: ${response.body}');
 
     if (successCodes.contains(response.statusCode)) {
       var object = json.decode(response.body);
@@ -1977,25 +2066,25 @@ class Constants {
         List<dynamic> switchData = object['switchData'];
         List<dynamic> sceneData = object['sceneData'];
         List<dynamic> remoteData = object['remoteData'];
-        print('voiceAssistantData: ${object['voiceAssitantData']}');
+        debugPrint('voiceAssistantData: ${object['voiceAssitantData']}');
         var voiceAssitantData = object['voiceAssitantData'];
 
         // store floor data
         floorBox.clear().then((value) {
-          floorData.forEach((element) {
-            print('floorData: $element');
+          for (var element in floorData) {
+            debugPrint('floorData: $element');
             ModelFloor modelFloor = ModelFloor.fromJson(element);
             floorBox.add(modelFloor);
-          });
+          }
         });
 
         // store room data
         roomBox.clear().then((value) {
-          roomData.forEach((element) {
-            print('roomData: $element');
+          for (var element in roomData) {
+            debugPrint('roomData: $element');
             ModelRoom modelRoom = ModelRoom.fromJson(element);
             roomBox.add(modelRoom);
-          });
+          }
         });
 
         // this below line is used to reload room data when app is open
@@ -2011,21 +2100,25 @@ class Constants {
 
         // store scene data
         sceneBox.clear().then((value) {
-          sceneData.forEach((element) {
-            print('sceneData: $element');
+          for (var element in sceneData) {
+            debugPrint('sceneData: $element');
             ModelScenes modelScenes = ModelScenes.fromJson(element);
             sceneBox.add(modelScenes);
-          });
+          }
         });
 
+        // save device data
+        if (deviceBox.isNotEmpty) {
+          saveDeviceAPI(false);
+        }
         // store device data
         deviceBox.clear().then((value) {
-          deviceData.forEach((element) {
+          for (var element in deviceData) {
             ModelDevice modelDevice = ModelDevice.fromJson(element);
             MQTTService().subscribeDevicesToMQTT(modelDevice.mainId!);
             sendSTSCommand(modelDevice.mainId);
             deviceBox.add(modelDevice);
-          });
+          }
         });
 
         sendSTSAndRGBCommand();
@@ -2035,19 +2128,19 @@ class Constants {
 
         // store switch data
         switchBox.clear().then((value) {
-          switchData.forEach((element) {
+          for (var element in switchData) {
             ModelSwitches modelSwitches = ModelSwitches.fromJson(element);
             switchBox.add(modelSwitches);
-          });
+          }
         });
 
         // store remote data with its switches
         remoteBox.clear().then((value) {
-          remoteData.forEach((element) {
-            print('remoteData1111: ${element}');
+          for (var element in remoteData) {
+            debugPrint('remoteData1111: $element');
             ModelRemotes modelRemotes = ModelRemotes.fromJson(element);
             remoteBox.add(modelRemotes);
-          });
+          }
         });
       } else {
         httpErrorToast(statusCode: response.statusCode, toast: object['toast']);
@@ -2066,7 +2159,7 @@ class Constants {
     Box<ModelDevice> deviceBox = Hive.box(devices);
     Box<UserModel> userBox = Hive.box(userTable);
     for (int i = 0; i < deviceBox.length; i++) {
-      Map<String, dynamic> cmdToSend = new Map();
+      Map<String, dynamic> cmdToSend = {};
       if (deviceBox.getAt(i)!.hardwareType!.startsWith('rgb')) {
         cmdToSend['cmd'] = Constants.RGB;
       } else {
@@ -2075,7 +2168,7 @@ class Constants {
 
       cmdToSend['slave'] = deviceBox.getAt(i)!.mainId;
       cmdToSend['token'] = deviceBox.getAt(i)!.token;
-      String byUser = 'M${userBox.getAt(0)!.userId}';
+      String byUser =  'M_${userBox.getAt(0)!.firstName} ${userBox.getAt(0)!.lastName}';
       cmdToSend['by'] = byUser;
       String cmd = jsonEncode(cmdToSend);
       var connectivityResult = await (Connectivity().checkConnectivity());
@@ -2102,6 +2195,7 @@ class Constants {
   }
 
   Future<bool> saveDeviceAPI(bool isToastRequired) async {
+    debugPrint('saveDeviceAPI--------');
     bool isDeviceSaved = false;
     Box<ModelDevice> deviceBox = Hive.box(devices);
     Box<ModelSwitches> switchesBox = Hive.box(switches);
@@ -2111,7 +2205,7 @@ class Constants {
     deviceBox.values
         .where((element) => element.operation == 'A')
         .forEach((element) {
-      print('devicedddddddddd: ${element.toJson()}');
+      debugPrint('SaveDeviceApiCalledd: ${element.toJson()}');
       var deviceObject = {
         "deviceId": element.deviceId,
         "name": element.name,
@@ -2174,7 +2268,7 @@ class Constants {
           if (isToastRequired) {
             Fluttertoast.showToast(msg: object['toast']);
           }
-          deviceArray.forEach((element) {
+          for (var element in deviceArray) {
             String deviceId = element['deviceId'];
             deviceBox.toMap().forEach((key, value) {
               if (value.deviceId == deviceId) {
@@ -2182,7 +2276,7 @@ class Constants {
                 deviceBox.put(key, value);
               }
             });
-          });
+          }
           if (Get.isBottomSheetOpen!) {
             isDeviceSaved = true;
             Get.back();
@@ -2200,26 +2294,27 @@ class Constants {
   }
 
   void loadRoomPrecacheImages(BuildContext context) {
-    groupImages.forEach((element) {
+    for (var element in groupImages) {
       precacheImage(element, context);
-    });
+    }
   }
 
-  Future<void> updateDeviceAPI(ModelDevice modelDevice) async {
+  Future<int> updateDeviceAPI(ModelDevice modelDevice) async {
+    int count = 0;
     var deviceBox = Hive.box<ModelDevice>(devices);
     var body = jsonEncode({
       "deviceId": modelDevice.deviceId,
       "slaveId": modelDevice.mainId,
       "armVersion": modelDevice.armVersion
     });
-    print('updateDeviceBody: $body');
+    debugPrint('updateDeviceBody: $body');
 
     var response = await http.put(
       Uri.parse(deviceDetailsUrl),
       headers: defaultHeader(),
       body: body,
     );
-    print('updateDeviceRes: ${response.body}');
+    debugPrint('updateDeviceRes: ${response.body}');
     var object = jsonDecode(response.body);
     if (successCodes.contains(response.statusCode)) {
       var status = object['status'];
@@ -2230,11 +2325,13 @@ class Constants {
             if (value.operation != 'A') {
               value.operation = 'N';
             }
+            count++;
             deviceBox.put(key, value);
           }
         });
       }
     }
+    return count;
   }
 
   void updateSceneID(String? id, ModelSwitches currentModelSwitch) {
@@ -2245,14 +2342,14 @@ class Constants {
           "switchId": currentModelSwitch.switchId,
           "sceneId": id,
         });
-        print('header-SceneController: ${defaultHeader()}');
-        print('req-SceneController: ${body}');
+        debugPrint('header-SceneController: ${defaultHeader()}');
+        debugPrint('req-SceneController: $body');
         var response = await http.post(
           Uri.parse(assignSceneIdUrl),
           headers: defaultHeader(),
           body: body,
         );
-        print('response-SceneController: ${response.body}');
+        debugPrint('response-SceneController: ${response.body}');
       } else {
         // internet connection lost
       }
@@ -2260,19 +2357,18 @@ class Constants {
   }
 
   Future<void> executeGlobalScene(ModelScenes? modelScenes) async {
-    Fluttertoast.showToast(msg: 'Executing Scene...');
     var command = modelScenes!.commandArray ?? [];
     var irCommand = modelScenes.irCommandArray ?? [];
-    // print('commandLength:${command.length}');
+    // debugPrint('commandLength:${command.length}');
     var deviceBox = Hive.box<ModelDevice>(devices);
     if (command.isNotEmpty) {
-      command.forEach((element) {
+      for (var element in command) {
         var slave = element['slave'];
 
         String cmd = jsonEncode(element);
         var modelDevice =
             deviceBox.values.firstWhere((element) => element.mainId == slave);
-        print('commandToSend: $cmd, modelDevice: ${modelDevice.toJson()}');
+        debugPrint('commandToSend: $cmd, modelDevice: ${modelDevice.toJson()}');
 
         if (Constants.devicesInLocal.contains(slave)) {
           String? receivedIP = Constants.arrayIpCache[slave];
@@ -2281,19 +2377,19 @@ class Constants {
           // mqtt
           MQTTService().publish(deviceMainId: slave, message: cmd);
         }
-      });
+      }
     }
 
     if (irCommand.isNotEmpty) {
       int delayToSendCmd = 0;
-      irCommand.forEach((element) {
+      for (var element in irCommand) {
         var timeDelay = element['timeDelay'];
         var command = element['command'];
         var deviceMainId = command['slave'];
 
         delayToSendCmd = delayToSendCmd + int.parse(timeDelay!);
 
-        new Future.delayed(Duration(seconds: delayToSendCmd), () {
+        Future.delayed(Duration(seconds: delayToSendCmd), () {
           String cmd = jsonEncode(command);
 
           if (Constants.devicesInLocal.contains(deviceMainId)) {
@@ -2304,15 +2400,408 @@ class Constants {
             MQTTService().publish(deviceMainId: deviceMainId, message: cmd);
           }
         });
-      });
+      }
     }
-    // sceneBox.values
-    //     .where((element) => element.id == modelScenes!.id)
-    //     .forEach((element) {
-    // });
+  }
+
+  Future<void> fetchSceneData() async {
+    var response =
+        await http.get(Uri.parse(sceneDetailsUrl), headers: defaultHeader());
+    debugPrint('fetchSceneReq: ${defaultHeader()}');
+    if (response.statusCode == 401) {
+      unAuthorizedUser();
+      return;
+    }
+    debugPrint('fetchSceneRes: ${response.body}');
+
+    var object = jsonDecode(response.body);
+    if (successCodes.contains(response.statusCode)) {
+      var status = object['status'];
+      var sceneData = object['sceneData'];
+      if (status == success) {
+        var sceneBox = Hive.box<ModelScenes>(scenes);
+        for (var element in sceneData) {
+          ModelScenes modelScenes = ModelScenes.fromJson(element);
+          sceneBox.toMap().forEach((key, value) {
+            if (value.id == modelScenes.id) {
+              value.commandArray = modelScenes.commandArray;
+              value.irCommandArray = modelScenes.irCommandArray;
+              sceneBox.put(key, value);
+            }
+          });
+        }
+      }
+    } else {
+      debugPrint('error in fetch scene API');
+    }
+  }
+
+  Future<void> changeFloorPositionAPI(bool isToastRequired) async {
+    var allFloorData = [];
+    var floorBox = Hive.box<ModelFloor>(floor);
+    floorBox.toMap().forEach((key, value) {
+      if (value.operation == 'U') {
+        var floorObject = {"floorId": value.id, "position": value.position};
+        allFloorData.add(floorObject);
+      }
+    });
+    if (allFloorData.isNotEmpty) {
+      var body = jsonEncode({'allFloorData': allFloorData});
+      debugPrint('changePositon: headers: ${defaultHeader()}, body: $body');
+
+      var response = await http.patch(
+        Uri.parse(floorDetailsUrl),
+        headers: defaultHeader(),
+        body: body,
+      );
+      var object = jsonDecode(response.body);
+      debugPrint('changePositionRes: $object');
+      if (successCodes.contains(response.statusCode)) {
+        for (var element in allFloorData) {
+          floorBox.toMap().forEach((key, value) {
+            if (value.id == element['floorId']) {
+              value.operation = 'N';
+              floorBox.put(key, value);
+            }
+          });
+        }
+        if (isToastRequired) {
+          Fluttertoast.showToast(
+              msg: object['toast'] ?? 'Positions changed successfully');
+        }
+      } else {
+        httpErrorToast(statusCode: response.statusCode, toast: object['toast']);
+      }
+    }
+  }
+
+  Future<void> changeRoomPostionAPI(bool isToastRequired) async {
+    var floorBox = Hive.box<ModelFloor>(floor);
+    var roomBox = Hive.box<ModelRoom>(room);
+
+    for (var element in floorBox.values) {
+      var allRoomData = [];
+      var roomJson = {};
+      roomBox.toMap().forEach((key, value) {
+        if (value.operation == 'U') {
+          if (element.id == value.floorId) {
+            allRoomData
+                .add({"roomId": value.id, "roomPosition": value.position});
+          }
+        }
+      });
+      if (allRoomData.isNotEmpty) {
+        roomJson['floorId'] = element.id;
+        roomJson['allRoomData'] = allRoomData;
+        var body = jsonEncode(roomJson);
+        debugPrint('changePosition: headers: ${defaultHeader()}, body: $body');
+
+        var response = await http.patch(
+          Uri.parse(roomDetailsUrl),
+          headers: defaultHeader(),
+          body: body,
+        );
+        var object = jsonDecode(response.body);
+        debugPrint('changePositionRes: $object');
+        if (successCodes.contains(response.statusCode)) {
+          var status = object['status'];
+          if (status == success) {
+            for (var element in allRoomData) {
+              roomBox.toMap().forEach((key, value) {
+                if (value.id == element['roomId']) {
+                  value.operation = 'N';
+                  roomBox.put(key, value);
+                }
+              });
+            }
+            if (isToastRequired) {
+              Fluttertoast.showToast(
+                  msg: object['toast'] ?? 'Positions changed successfully');
+            }
+          } else {
+            debugPrint('statusFail: ${response.statusCode}');
+          }
+        } else {
+          httpErrorToast(
+              statusCode: response.statusCode, toast: object['toast']);
+        }
+      }
+    }
+  }
+
+  Future<void> changeSwitchPostionAPI(bool isToastRequired) async {
+    var roomBox = Hive.box<ModelRoom>(room);
+    var switchesBox = Hive.box<ModelSwitches>(switches);
+
+    for (var modelRoom in roomBox.values) {
+      var allSwitchData = [];
+      var switchJson = {};
+      switchesBox.toMap().forEach((key, value) {
+        if (value.operation == 'U') {
+          if (modelRoom.id == value.roomId) {
+            allSwitchData.add({
+              'switchPosition': value.position,
+              'switchId': value.switchId,
+            });
+          }
+        }
+      });
+      if (allSwitchData.isNotEmpty) {
+        switchJson['roomId'] = modelRoom.id;
+        switchJson['allSwitchArray'] = allSwitchData;
+        var body = jsonEncode(switchJson);
+        debugPrint('changePosition: headers: ${defaultHeader()}, body: $body');
+
+        var response = await http.patch(
+          Uri.parse(editSwitchUrl),
+          headers: defaultHeader(),
+          body: body,
+        );
+        debugPrint(
+            'response_body: code: ${response.statusCode}, ${response.body}');
+        var object = jsonDecode(response.body);
+        if (successCodes.contains(response.statusCode)) {
+          String status = object['status'];
+          if (status == success) {
+            for (var element in allSwitchData) {
+              switchesBox.toMap().forEach((key, value) {
+                if (value.roomId == element['roomId']) {
+                  value.operation = 'N';
+                  switchesBox.put(key, value);
+                }
+              });
+            }
+            if (isToastRequired) {
+              Fluttertoast.showToast(
+                  msg: object['toast'] ?? 'Position changed successfully');
+            }
+          }
+        } else {
+          httpErrorToast(
+              statusCode: response.statusCode, toast: object['toast']);
+        }
+      }
+    }
+  }
+
+  Future<void> changeRemotePositionAPI(bool isToastRequired) async {
+    // var allRemoteData = [];
+    var roomBox = Hive.box<ModelRoom>(room);
+    var remoteBox = Hive.box<ModelRemotes>(remotes);
+
+    for (var modelRoom in roomBox.values) {
+      var allRemoteData = [];
+      var remoteJson = {};
+      remoteBox.toMap().forEach((key, value) {
+        if (value.operation == 'U') {
+          if (modelRoom.id == value.roomId) {
+            allRemoteData
+                .add({'remotePosition': value.position, 'remoteId': value.id});
+          }
+        }
+      });
+      if (allRemoteData.isNotEmpty) {
+        remoteJson['roomId'] = modelRoom.id;
+        remoteJson['allRemoteArray'] = allRemoteData;
+        var body = jsonEncode(remoteJson);
+        debugPrint('changePosition: headers: ${defaultHeader()}, body: $body');
+
+        var response = await http.put(
+          Uri.parse(changeRemotePositionUrl),
+          headers: defaultHeader(),
+          body: body,
+        );
+        debugPrint(
+            'changePosition:response: code: ${response.statusCode}, ${response.body}');
+        var object = jsonDecode(response.body);
+        if (successCodes.contains(response.statusCode)) {
+          String status = object['status'];
+          if (status == success) {
+            for (var element in allRemoteData) {
+              remoteBox.toMap().forEach((key, value) {
+                if (value.roomId == element['roomId']) {
+                  value.operation = 'N';
+                  remoteBox.put(key, value);
+                }
+              });
+            }
+            if (isToastRequired) {
+              Fluttertoast.showToast(
+                  msg: object['toast'] ?? 'Position changed successfully');
+            }
+          }
+        } else {
+          httpErrorToast(
+              statusCode: response.statusCode, toast: object['toast']);
+        }
+      }
+    }
+  }
+
+  Future<void> changeScenePositionAPI(bool isToastRequired) async {
+    var sceneBox = Hive.box<ModelScenes>(scenes);
+    var allSceneData = [];
+
+    sceneBox.toMap().forEach((key, value) {
+      var floorObject = {
+        "sceneId": value.id,
+        "scenePosition": value.position.toString()
+      };
+      allSceneData.add(floorObject);
+    });
+    if (allSceneData.isNotEmpty) {
+      var body = jsonEncode({'allSceneArray': allSceneData});
+      debugPrint('changePositon: headers: ${defaultHeader()}, body: $body');
+
+      var response = await http.patch(
+        Uri.parse(sceneDetailsUrl),
+        headers: defaultHeader(),
+        body: body,
+      );
+      var object = jsonDecode(response.body);
+      debugPrint('changePositionRes: $object');
+      if (successCodes.contains(response.statusCode)) {
+        if (isToastRequired) {
+          Fluttertoast.showToast(
+              msg: object['toast'] ?? 'Positions changed successfully');
+        }
+      } else {
+        httpErrorToast(statusCode: response.statusCode, toast: object['toast']);
+      }
+    }
+  }
+
+  Future isMajorAppUpdate() async {
+    PackageInfo packageInfo = await PackageInfo.fromPlatform();
+    debugPrint("package info ${packageInfo.version}");
+    var body = {"appVersion": packageInfo.version};
+    debugPrint("dataaaa${packageInfo.version}");
+    var response = await http.post(
+      Uri.parse(forceAppUpdateUrl),
+      headers: defaultHeader(),
+      body: json.encode(body),
+    );
+    var data = ForceAppUpdateModel.fromJson(json.decode(response.body));
+    if (GetPlatform.isAndroid) {
+      if (data.android?.majorUpdate != null) {
+        return true;
+      }else if(data.android?.minorUpdate != null){
+        return false;
+      }
+    } else {
+      if (data.ios!.majorUpdate != null) {
+        return true;
+      }else if(data.ios!.minorUpdate != null){
+        return false;
+      }
+    }
+
+    return 0;
+  }
+
+  Widget forceUpdateScreen() {
+    var controller = Get.put(MainNavigationController());
+    return WillPopScope(
+      onWillPop: () async {
+        Get.back();
+        controller.isFAUDOpen.value = false;
+        return false;
+      },
+      child: AppUpdateDialog(
+        key: const Key("Force App Update"),
+        title: "Update Available",
+        description: 'To use this app download the latest version',
+        negativeBtnName: '',
+        onNegativeBtnPress: () {},
+        positivieBtnName: 'Update',
+        onPositiveBtnPress: () {
+          StoreRedirect.redirect(
+              androidAppId: "com.vdt.smartnode", iOSAppId: "1364981811");
+          controller.isFAUDOpen.value = false;
+          Get.back();
+        },
+      ),
+    );
+  }
+
+// Future<void> getAppUpdate() async {
+//   if (isMinorUpdate && !isUpdatePromptShown) {
+//     isUpdatePopup = true;
+//     showModalBottomSheet(
+//       backgroundColor: Colors.transparent,
+//       context: context,
+//       elevation: 10,
+//       builder: (buildContext) => AppUpdateDialog(
+//         title: "Update Available",
+//         description:
+//         'You need to update ${Constants.appName} app to explore new feature.',
+//         negativeBtnName: 'Cancel',
+//         onNegativeBtnPress: () => Navigator.pop(buildContext),
+//         positivieBtnName: 'Update',
+//         onPositiveBtnPress: () {
+//           StoreRedirect.redirect(
+//               androidAppId: "com.vdt.smartnode", iOSAppId: "1364981811");
+//           Navigator.pop(buildContext);
+//         },
+//       ),
+//     ).then((value) => isUpdatePopup = true);
+//     isUpdatePromptShown = true;
+//   }
+//
+//   if (isForceUpdate) {
+//     isUpdatePopup = true;
+//
+//     showModalBottomSheet(
+//       backgroundColor: Colors.transparent,
+//       context: context,
+//       isDismissible: false,
+//       isScrollControlled: true,
+//       enableDrag: false,
+//       elevation: 10,
+//       builder: (buildContext) => forceUpdateScreen(),
+//     ).then((value) => isUpdatePopup = false);
+//   }
+//   isUpdatePopup = false;
+// }
+//   Future _download(String url) async {
+//     var awsAuth = {
+//
+//
+//     };
+//     final response = await http.get(Uri.parse(url),
+//         headers: <String, String>{'authorization': basicAuth});
+//
+//     // Get the image name
+//     final imageName = path.basename(url);
+//     // Get the document directory path
+//
+//
+//   }
+
+   Future getAWSHeader(String url)  async{
+    const String hostName = 'productionsmartnnode.s3.ap-south-1.amazonaws.com';
+    const String region = 'ap-south-1';
+    final serviceConfiguration = S3ServiceConfiguration();
+
+    const signer = AWSSigV4Signer(
+      credentialsProvider: AWSCredentialsProvider.environment(),
+    );
+    final scope = AWSCredentialScope(
+      region: region,
+      service: AWSService.s3,
+    );
+    final urlRequest = AWSHttpRequest.get(
+      Uri.https(hostName, url.split("/").last),
+      headers: const {
+        AWSHeaders.host: hostName,
+      },
+    );
+    final signedUrl = await signer.presign(
+      urlRequest,
+      credentialScope: scope,
+      serviceConfiguration: serviceConfiguration,
+      expiresIn: const Duration(seconds: 30),
+    );
+    return signedUrl;
   }
 }
-
-
-String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/${apiVersion[0]}': 'https://test.api.smartnode.in/api/${apiVersion[0]}';
-//build_run_number=118
