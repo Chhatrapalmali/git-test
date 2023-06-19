@@ -43,7 +43,7 @@ jobs:
       - name: Update String v2BaseUrl()
         run: |          
           if [[ ${GITHUB_REF#refs/heads/} == "appurlselector" ]]; then
-           echo " String v2BaseUrl() => SharedPreferenceManager.isLocalUrl()   ? 'http://10.10.10.102:5000/api/${apiVersion[1]}' : 'https://api.smartnode.in/api/${apiVersion[1]}';" >> smart_node/lib/helper/constants.dart       
+           echo " String v2BaseUrl() => SharedPreferenceManager.isLocalUrl()   ? 'http://10.10.10.102:5000/api/\${apiVersion[1]}' : 'https://api.smartnode.in/api/\${apiVersion[1]}';" >> smart_node/lib/helper/constants.dart       
           else
             echo "String v2BaseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/\${apiVersion[1]}': 'https://test.api.smartnode.in/api/\${apiVersion[1]}';" >> smart_node/lib/helper/constants.dart
           fi
