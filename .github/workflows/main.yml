@@ -27,7 +27,7 @@ jobs:
          #while first adding this cript make sure constant.dart file contains line with below text otherwise build fails.
          
          sed -i '/String baseUrl()/d' ./smart_node/lib/helper/constants.dart
-          sed -i '/String baseUrl()/d' ./smart_node/lib/helper/constants.dart
+          sed -i '/String v2BaseUrl()/d' ./smart_node/lib/helper/constants.dart
          sed -i '/apiVersion/d' ./smart_node/lib/helper/constants.dart
           sed -i '/build_run_number/d' ./smart_node/lib/helper/constants.dart
          
