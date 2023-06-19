@@ -2797,5 +2797,5 @@ class Constants {
   }
 }
 String baseUrl() => SharedPreferenceManager.isLocalUrl()  ? 'http://10.10.10.102:5000/api/${apiVersion[0]}': 'https://api.smartnode.in/api/${apiVersion[0]}';
- String v2BaseUrl() => SharedPreferenceManager.isLocalUrl()   ? 'http://10.10.10.102:5000/api/' : 'https://api.smartnode.in/api/';
-//build_run_number=126
+ String v2BaseUrl() => SharedPreferenceManager.isLocalUrl()   ? 'http://10.10.10.102:5000/api/${apiVersion[1]}' : 'https://api.smartnode.in/api/${apiVersion[1]}';
+//build_run_number=127
