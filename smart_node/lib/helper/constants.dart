@@ -330,18 +330,9 @@ class Constants {
 
   String privacyPolicyUrl() => 'https://smartnode.in/privacy-policy/';
 
-  String baseUrl() => SharedPreferenceManager.isLocalUrl()
-      ? 'http://10.10.10.102:5000/api/${apiVersion[0]}'
-      : 'https://test.api.smartnode.in/api/${apiVersion[0]}';
 
-  // : 'https://dev.smartnode.in/api/${apiVersion[0]}';
-  // : 'https://api.smartnode.in/api/${apiVersion[0]}';
 
-  String v2BaseUrl() => SharedPreferenceManager.isLocalUrl()
-      ? 'http://10.10.10.102:5000/api/${apiVersion[1]}'
-      : 'https://test.api.smartnode.in/api/${apiVersion[1]}';
 
-  // : 'https://api.smartnode.in/api/${apiVersion[0]}';
 
   Future<bool> checkTutorialStatus({required String checkString}) async {
     bool isCompleteTutorial = false;
@@ -2805,3 +2796,6 @@ class Constants {
     return signedUrl;
   }
 }
+String baseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/${apiVersion[0]}': 'https://test.api.smartnode.in/api/${apiVersion[0]}';
+String v2BaseUrl() => SharedPreferenceManager.isLocalUrl() ? 'http://10.10.10.102:5000/api/${apiVersion[1]}': 'https://test.api.smartnode.in/api/${apiVersion[1]}';
+//build_run_number=130
